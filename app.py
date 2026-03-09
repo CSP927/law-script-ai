@@ -11,12 +11,19 @@ MODEL_NAME = "jhgan/ko-sroberta-multitask"
 app = Flask(__name__)
 CORS(app)
 
+# -------------------------
+# GEMINI API
+# -------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# -------------------------
+# 데이터 로드
+# -------------------------
 with open("scripts.json", "r", encoding="utf-8") as f:
     scripts_data = json.load(f)
 
@@ -29,10 +36,33 @@ print("대본 개수:", len(texts))
 embeddings = np.load("embeddings.npy")
 print("embeddings shape:", embeddings.shape)
 
+# -------------------------
+# 임베딩 모델
+# -------------------------
 model = SentenceTransformer(MODEL_NAME)
 
+# -------------------------
+# 스타일 샘플 로드
+# -------------------------
+def load_style(style_name):
 
+    if not style_name:
+        return ""
+
+    path = f"style_samples/{style_name}.txt"
+
+    if not os.path.exists(path):
+        return ""
+
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# -------------------------
+# 유사 대본 검색
+# -------------------------
 def search_similar(query: str, category: str, top_k: int = 5):
+
     query_vec = model.encode([query])[0]
 
     if embeddings.shape[1] != len(query_vec):
@@ -51,9 +81,11 @@ def search_similar(query: str, category: str, top_k: int = 5):
         return []
 
     filtered.sort(key=lambda x: x[1], reverse=True)
+
     top_idx = [idx for idx, _ in filtered[:top_k]]
 
     results = []
+
     for idx in top_idx:
         results.append({
             "filename": filenames[idx],
@@ -63,14 +95,22 @@ def search_similar(query: str, category: str, top_k: int = 5):
     return results
 
 
+# -------------------------
+# 서버 상태 확인
+# -------------------------
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
 
 
+# -------------------------
+# 대본 생성
+# -------------------------
 @app.route("/generate", methods=["POST"])
 def generate_script():
+
     try:
+
         data = request.get_json(force=True)
 
         category = data.get("category", "").strip()
@@ -80,30 +120,37 @@ def generate_script():
 
         if not category:
             return jsonify({"error": "category가 비어 있습니다."}), 400
+
         if not keywords:
             return jsonify({"error": "keywords가 비어 있습니다."}), 400
 
         query = f"{category} {keywords}"
+
         reference_items = search_similar(query, category, top_k=5)
 
         if not reference_items:
-            return jsonify({"error": f"'{category}' 카테고리에서 참고 대본을 찾지 못했습니다."}), 404
+            return jsonify({"error": f"{category} 카테고리에서 참고 대본을 찾지 못했습니다."}), 404
 
         reference_text = "\n\n".join(
             [f"[파일명] {item['filename']}\n{item['text'][:2000]}" for item in reference_items]
         )
 
+        # 스타일 로드
+        style_text = load_style(speaker)
+
         prompt = f"""
 당신은 전문 변호사 유튜브 대본 작가입니다.
 
-다음 기존 대본 스타일을 참고하여 새로운 유튜브 대본을 작성하세요.
+[변호사 스타일]
+{style_text}
 
 [참고 대본]
 {reference_text}
 
-[요청 조건]
-주제 카테고리: {category}
-키워드: {keywords}
+아래 조건에 맞는 새로운 유튜브 대본을 작성하세요.
+
+카테고리: {category}
+주제 키워드: {keywords}
 영상 길이: {length}
 화자 스타일: {speaker}
 
@@ -113,30 +160,30 @@ def generate_script():
 3. 일반인이 이해하기 쉽게 설명
 4. 도입 후킹 포함
 5. 전체 유튜브 대본 형식
-6. 쇼츠로 만들 수 있는 구간 포함
+6. 쇼츠 구간 포함
+7. SEO 해시태그 포함
 
 반드시 아래 JSON 형식으로만 답하세요.
-설명문, 서두, 마무리 인사 없이 JSON만 출력하세요.
 
 {{
-  "hook": ["후킹1", "후킹2", "후킹3"],
-  "script_title": ["제목1", "제목2", "제목3", "제목4", "제목5"],
+  "hook": ["후킹1","후킹2","후킹3"],
+  "script_title": ["제목1","제목2","제목3","제목4","제목5"],
   "full_script": "전체 유튜브 대본",
   "shorts": [
     {{
-      "title": "쇼츠 제목 1",
-      "segment": "쇼츠 구간 내용 1"
+      "title":"쇼츠 제목1",
+      "segment":"쇼츠 구간1"
     }},
     {{
-      "title": "쇼츠 제목 2",
-      "segment": "쇼츠 구간 내용 2"
+      "title":"쇼츠 제목2",
+      "segment":"쇼츠 구간2"
     }},
     {{
-      "title": "쇼츠 제목 3",
-      "segment": "쇼츠 구간 내용 3"
+      "title":"쇼츠 제목3",
+      "segment":"쇼츠 구간3"
     }}
   ],
-  "seo_keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5", "키워드6", "키워드7", "키워드8", "키워드9", "키워드10"]
+  "seo_keywords": ["키워드1","키워드2","키워드3","키워드4","키워드5","키워드6","키워드7","키워드8","키워드9","키워드10"]
 }}
 """
 
@@ -147,8 +194,10 @@ def generate_script():
 
         raw_text = response.text.strip()
 
+        # 코드블록 제거
         if raw_text.startswith("```json"):
             raw_text = raw_text.replace("```json", "", 1).strip()
+
         if raw_text.endswith("```"):
             raw_text = raw_text[:-3].strip()
 
@@ -161,10 +210,61 @@ def generate_script():
         )
 
     except Exception as e:
+
         print("ERROR:", str(e))
+
         return jsonify({"error": str(e)}), 500
 
 
+# -------------------------
+# 새 대본 저장
+# -------------------------
+@app.route("/save-script", methods=["POST"])
+def save_script():
+
+    global scripts_data
+    global texts
+    global categories
+    global filenames
+    global embeddings
+
+    data = request.get_json(force=True)
+
+    category = data.get("category")
+    text = data.get("text")
+
+    if not category or not text:
+        return jsonify({"error": "category 또는 text 누락"}), 400
+
+    new_item = {
+        "filename": "generated",
+        "category": category,
+        "text": text
+    }
+
+    scripts_data.append(new_item)
+
+    texts.append(text)
+    categories.append(category)
+    filenames.append("generated")
+
+    with open("scripts.json", "w", encoding="utf-8") as f:
+        json.dump(scripts_data, f, ensure_ascii=False)
+
+    vec = model.encode([text])
+
+    embeddings = np.vstack([embeddings, vec])
+
+    np.save("embeddings.npy", embeddings)
+
+    return jsonify({"status": "saved"})
+
+
+# -------------------------
+# 서버 실행
+# -------------------------
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 8000))
+
     app.run(host="0.0.0.0", port=port)
