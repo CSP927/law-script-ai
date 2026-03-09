@@ -2,5 +2,5 @@ flask
 flask-cors
 numpy
 sentence-transformers
-google-genai
-torch
+google-generativeai
+gunicorn
