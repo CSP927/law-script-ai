@@ -6,7 +6,7 @@ from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 
-MODEL_NAME = "jhgan/ko-sroberta-multitask"
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 app = Flask(__name__)
 CORS(app)
@@ -31,9 +31,9 @@ gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 with open("scripts.json", "r", encoding="utf-8") as f:
     scripts_data = json.load(f)
 
-texts = [d["text"] for d in scripts_data]
-categories = [d["category"] for d in scripts_data]
-filenames = [d["filename"] for d in scripts_data]
+texts = [d.get("text","") for d in scripts_data]
+categories = [d.get("category","") for d in scripts_data]
+filenames = [d.get("filename","unknown") for d in scripts_data]
 
 print("대본 개수:", len(texts))
 
@@ -43,13 +43,10 @@ print("대본 개수:", len(texts))
 
 embeddings = np.load("embeddings.npy")
 
-# cosine similarity 최적화
-embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
-
 print("embeddings shape:", embeddings.shape)
 
 # -------------------------
-# 모델 로딩 (한 번만)
+# 모델 로딩
 # -------------------------
 
 print("임베딩 모델 로딩 중...")
@@ -74,12 +71,12 @@ def load_style(style):
         return f.read()
 
 # -------------------------
-# 유사 대본 검색 (초고속)
+# 유사 대본 검색
 # -------------------------
 
 def search_similar(query, category, top_k=5):
 
-    query_vec = model.encode([query])[0]
+    query_vec = model.encode([query], convert_to_numpy=True)[0]
 
     query_vec = query_vec / np.linalg.norm(query_vec)
 
@@ -174,11 +171,7 @@ JSON 형식으로만 답하세요.
 
         raw = response.text.strip()
 
-        if raw.startswith("```json"):
-            raw = raw.replace("```json","",1)
-
-        if raw.endswith("```"):
-            raw = raw[:-3]
+        raw = raw.replace("```json","").replace("```","")
 
         result = json.loads(raw)
 
