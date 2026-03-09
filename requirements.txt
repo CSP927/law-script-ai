@@ -3,6 +3,6 @@
 flask
 flask-cors
 numpy
-torch==2.2.2+cpu
+torch==2.10.0+cpu
 sentence-transformers
 google-generativeai
