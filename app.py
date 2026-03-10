@@ -6,8 +6,7 @@ from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 
-MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
+MODEL_NAME = "sentence-transformers/paraphrase-MiniLM-L3-v2"
 app = Flask(__name__)
 CORS(app)
 
