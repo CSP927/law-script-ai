@@ -41,9 +41,6 @@ def normalize_space(text: str) -> str:
 
 
 def tokenize(text: str) -> List[str]:
-    """
-    너무 무겁지 않게 한글/영문/숫자 토큰만 추출
-    """
     text = (text or "").lower()
     tokens = re.findall(r"[가-힣a-zA-Z0-9]+", text)
     return [t for t in tokens if len(t) >= 1]
@@ -63,11 +60,11 @@ def unique_keep_order(items: List[str]) -> List[str]:
     return result
 
 
+# -------------------------
+# JSON 추출 (강화됨)
+# -------------------------
 def extract_json_object(raw: str) -> Dict[str, Any]:
-    """
-    Gemini가 설명을 섞거나 코드블록을 섞어도
-    첫 { 부터 마지막 } 까지 잘라서 JSON 파싱
-    """
+
     raw = (raw or "").strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
 
@@ -78,7 +75,14 @@ def extract_json_object(raw: str) -> Dict[str, Any]:
         raise ValueError("Gemini 응답에서 JSON 객체를 찾지 못했습니다.")
 
     json_text = raw[start:end + 1]
-    return json.loads(json_text)
+
+    try:
+        return json.loads(json_text)
+    except json.JSONDecodeError as e:
+        print("===== JSON PARSE ERROR =====")
+        print(json_text)
+        print("============================")
+        raise e
 
 
 def ensure_list_of_strings(value: Any, target_len: int) -> List[str]:
@@ -123,9 +127,7 @@ def ensure_shorts(value: Any, target_len: int = 3) -> List[Dict[str, str]]:
 
 
 def normalize_result(result: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Wix에서 항상 같은 구조로 받을 수 있게 강제 보정
-    """
+
     normalized = {
         "hook": ensure_list_of_strings(result.get("hook"), 3),
         "script_title": ensure_list_of_strings(result.get("script_title"), 5),
@@ -166,16 +168,13 @@ def score_document(query_tokens: List[str], doc_text: str, filename: str) -> flo
         if not token:
             continue
 
-        # 텍스트 본문에 있으면 점수
         count_in_text = doc_text_l.count(token)
         if count_in_text > 0:
             score += min(count_in_text, 10) * 2.0
 
-        # 파일명에 있으면 가중치
         if token in filename_l:
             score += 3.0
 
-    # 너무 짧은 문서는 감점
     if len(doc_text.strip()) < 300:
         score -= 1.5
 
@@ -196,7 +195,6 @@ def search_similar(query: str, category: str, top_k: int = 5) -> List[Dict[str, 
 
         score = score_document(query_tokens, text, filename)
 
-        # 아주 최소 점수라도 없으면 뒤로 밀리게 처리
         candidates.append((i, score))
 
     candidates.sort(key=lambda x: x[1], reverse=True)
@@ -239,10 +237,6 @@ def build_prompt(
 - 기존 참고 대본의 말투, 문장 길이, 설명 방식, 호흡을 최대한 따르세요.
 
 [참고 대본 스타일]
-아래 텍스트는 실제 화자의 말투와 설명 방식입니다.
-설명 순서, 사례 풀어가는 방식, 문장 톤, 전문직다운 어조를 반드시 참고하세요.
-완전히 다른 스타일로 새로 쓰지 말고, 아래 스타일을 최대한 유지해서 새 주제로 확장하세요.
-
 {style_text}
 
 [관련 참고 대본]
@@ -271,45 +265,15 @@ def build_prompt(
 반드시 아래 형식 그대로 JSON만 출력하세요.
 
 {{
-  "hook": [
-    "후킹1",
-    "후킹2",
-    "후킹3"
-  ],
-  "script_title": [
-    "제목1",
-    "제목2",
-    "제목3",
-    "제목4",
-    "제목5"
-  ],
+  "hook": ["후킹1","후킹2","후킹3"],
+  "script_title": ["제목1","제목2","제목3","제목4","제목5"],
   "full_script": "전체 대본",
-  "shorts": [
-    {{
-      "title": "쇼츠 제목1",
-      "segment": "쇼츠 내용1"
-    }},
-    {{
-      "title": "쇼츠 제목2",
-      "segment": "쇼츠 내용2"
-    }},
-    {{
-      "title": "쇼츠 제목3",
-      "segment": "쇼츠 내용3"
-    }}
+  "shorts":[
+    {{"title":"쇼츠 제목1","segment":"쇼츠 내용1"}},
+    {{"title":"쇼츠 제목2","segment":"쇼츠 내용2"}},
+    {{"title":"쇼츠 제목3","segment":"쇼츠 내용3"}}
   ],
-  "seo_keywords": [
-    "키워드1",
-    "키워드2",
-    "키워드3",
-    "키워드4",
-    "키워드5",
-    "키워드6",
-    "키워드7",
-    "키워드8",
-    "키워드9",
-    "키워드10"
-  ]
+  "seo_keywords":["키워드1","키워드2","키워드3","키워드4","키워드5","키워드6","키워드7","키워드8","키워드9","키워드10"]
 }}
 """.strip()
 
@@ -365,7 +329,11 @@ def generate():
         )
 
         response = gemini_model.generate_content(prompt)
+
         raw = (response.text or "").strip()
+
+        # ⭐ JSON 깨짐 방지 (추가된 부분)
+        raw = raw.replace("\r", " ").replace("\n", " ")
 
         parsed = extract_json_object(raw)
         result = normalize_result(parsed)
