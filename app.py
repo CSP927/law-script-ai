@@ -325,21 +325,50 @@ def build_full_script_prompt(
     structure: str,
     style_text: str,
     reference_text: str,
-    draft_text: str
+    draft_text: str,
+    article_text: str
 ) -> str:
     expand_block = ""
 
-    if draft_text:
+    if not draft_text and not article_text:
+        expand_block = """
+[작성 방식]
+- 참고자료 없이 작성하되, 반드시 참고 대본 스타일을 따르세요.
+"""
+
+    elif draft_text and not article_text:
         expand_block = f"""
-[초안]
-아래 초안을 반드시 바탕으로 확장하세요.
-
+[초안 기반 작성]
+- 아래 초안을 반드시 반영하여 확장하세요.
 - 초안의 핵심 취지와 논점을 유지할 것
-- 문장을 더 자연스럽고 설득력 있게 확장할 것
-- 필요하면 설명, 사례, 정리 구간을 보강할 것
-- 초안과 완전히 다른 내용으로 새로 쓰지 말 것
 
+[초안]
 {draft_text}
+"""
+
+    elif article_text and not draft_text:
+        expand_block = f"""
+[기사 기반 작성]
+- 아래 기사 내용을 바탕으로 대본을 작성하세요.
+- 기사 내용은 참고자료일 뿐이며, 최종 대본 구조는 반드시 "{structure}"을 따르세요.
+- 단순 요약이 아니라 선택한 구조에 맞게 재구성하세요.
+
+[기사]
+{article_text}
+"""
+
+    else:
+        expand_block = f"""
+[초안 + 기사 기반 작성]
+- 초안을 중심으로 유지하고 기사 내용으로 보강하세요.
+- 기사 내용을 그대로 복사하지 말고 재구성할 것
+- 최종 대본 구조는 반드시 "{structure}"을 따르세요.
+
+[초안]
+{draft_text}
+
+[기사]
+{article_text}
 """
 
     return f"""
@@ -574,6 +603,7 @@ def generate():
         style = normalize_space(data.get("speaker") or "")
         structure = normalize_space(data.get("script_structure") or "")
         draft_text = (data.get("draft_text") or "").strip()
+        article_text = (data.get("article_text") or "").strip()
 
         if not category:
             return jsonify({"error": "category가 비어 있습니다."}), 400
@@ -594,15 +624,16 @@ def generate():
         style_text = load_style(style)
 
         full_script_prompt = build_full_script_prompt(
-            category=category,
-            keywords=keywords,
-            length=length,
-            style=style,
-            structure=structure,
-            style_text=style_text,
-            reference_text=reference_text,
-            draft_text=draft_text
-        )
+    category=category,
+    keywords=keywords,
+    length=length,
+    style=style,
+    structure=structure,
+    style_text=style_text,
+    reference_text=reference_text,
+    draft_text=draft_text,
+    article_text=article_text
+)
 
         full_script = safe_generate_content(full_script_prompt).strip()
 
