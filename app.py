@@ -181,12 +181,15 @@ def normalize_meta_result(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def safe_generate_content(prompt: str, retries: int = 3, sleep_sec: float = 1.2) -> str:
+def safe_generate_content(prompt: str, retries: int = 3, sleep_sec: float = 1.2, temperature: float = 0.85) -> str:
     last_error = None
 
     for _ in range(retries):
         try:
-            response = gemini_model.generate_content(prompt)
+            response = gemini_model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(temperature=temperature)
+            )
             raw = (response.text or "").strip()
             raw = raw.replace("\r", " ").replace("\n", " ")
             return raw
@@ -645,7 +648,7 @@ def generate():
         )
 
         meta_prompt = build_meta_prompt(full_script, shorts_segments)
-        meta_raw = safe_generate_content(meta_prompt)
+        meta_raw = safe_generate_content(meta_prompt, temperature=0.4)
         meta_parsed = extract_json_object(meta_raw)
         meta = normalize_meta_result(meta_parsed)
 
